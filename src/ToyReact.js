@@ -64,31 +64,34 @@ export class Component {
     this.children.push(vchild);
   }
 
-  setState(state) {
-    let isChanged = false;
-    let merge = (prevState, nextState) => {
-      for (let p in nextState) {
-        if (typeof nextState[p] === 'object') {
-          if (typeof prevState[p] !== 'object') {
-            prevState[p] = {};
-          }
-          merge(prevState[p], nextState[p])
-        } else {
-          if (prevState[p] !== nextState[p]) {
-            prevState[p] = nextState[p];
-            isChanged = true;
+  setState(state, fn) {
+    let statePromise = new Promise((resolve, reject) => {
+      let isChanged = false;
+      let merge = (prevState, nextState) => {
+        for (let p in nextState) {
+          if (typeof nextState[p] === 'object') {
+            if (typeof prevState[p] !== 'object') {
+              prevState[p] = {};
+            }
+            merge(prevState[p], nextState[p])
+          } else {
+            if (prevState[p] !== nextState[p]) {
+              prevState[p] = nextState[p];
+              isChanged = true;
+            }
           }
         }
       }
-    }
-    if (!this.state && state) {
-      this.state = {};
-    }
+      if (!this.state && state) {
+        this.state = {};
+      }
 
-    merge(this.state, state);
-    if (isChanged) {
-      this.update();
-    }
+      merge(this.state, state);
+      if (isChanged) {
+        this.update();
+      }
+      resolve();
+    }).then(() => fn());
   }
 
   update() {
