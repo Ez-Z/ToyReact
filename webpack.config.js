@@ -34,6 +34,13 @@ module.exports = {
           },
         },
       },
+      {
+        test: /.css/,
+        exclude: /(node_modules|bower_components)/,
+        use: {
+          loader: "css-loader",
+        },
+      },
     ],
   },
   mode: "development",
