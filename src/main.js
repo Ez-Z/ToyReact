@@ -68,8 +68,6 @@ class Game extends Component {
         squares: squares
       }]),
       xIsNext: !this.state.xIsNext,
-    },() => {
-      console.log(this.state);
     });
   }
 
