@@ -1,46 +1,105 @@
+let childrenSymbol = Symbol('children');
+
 class ElementWrapper {
   constructor(type) {
-    this.root = document.createElement(type);
+    this.type = type;
+    this[childrenSymbol] = [];
+    this.props = Object.create(null);
+    this.children = [];
   }
 
   setAttribute(name, value) {
-    if (name.match(/^on([\s\S]+)$/)) {
-      let eventName = RegExp.$1.replace(/^[\s\S]/, s => s.toLowerCase())
-      this.root.addEventListener(eventName, value);
-    }
-    if (name === 'className') {
-      this.root.setAttribute('class', value)
-    }
-    this.root.setAttribute(name, value);
+    // if (name.match(/^on([\s\S]+)$/)) {
+    //   let eventName = RegExp.$1.replace(/^[\s\S]/, s => s.toLowerCase())
+    //   this.root.addEventListener(eventName, value);
+    // }
+    // if (name === 'className') {
+    //   this.root.setAttribute('class', value)
+    // }
+    this.props[name] = value;
   }
 
   appendChild(vchild) {
-    let range = document.createRange();
-    if (this.root.children.length) {
-      range.setStartAfter(this.root.lastChild);
-      range.setEndAfter(this.root.lastChild);
-    } else {
-      range.setStart(this.root, 0);
-      range.setEnd(this.root, 0);
-    }
-    
-    vchild.mountTo(range);
+    this[childrenSymbol].push(vchild);
+    this.children.push(vchild.vdom)
+    // let range = document.createRange();
+    // if (this.root.children.length) {
+    //   range.setStartAfter(this.root.lastChild);
+    //   range.setEndAfter(this.root.lastChild);
+    // } else {
+    //   range.setStart(this.root, 0);
+    //   range.setEnd(this.root, 0);
+    // }
+
+    // vchild.mountTo(range);
+  }
+
+  // get children() {
+  //   return this.children.map(child => child.vdom);
+  // }
+
+  get vdom() {
+    return this;
   }
 
   mountTo(range) {
+    this.range = range;
+    let placehoader = document.createComment("placehoader");
+    let endRange = document.createRange();
+    if (range.endContainer) {
+      endRange.setStart(range.endContainer, range.endOffset);
+      endRange.setEnd(range.endContainer, range.endOffset);
+      endRange.insertNode(placehoader)
+    }
+
     range.deleteContents();
-    range.insertNode(this.root);
+
+    let elm = document.createElement(this.type);
+
+    for (let name in this.props) {
+      let value = this.props[name];
+      elm.setAttribute(name, value);
+      if (name.match(/^on([\s\S]+)$/)) {
+        let eventName = RegExp.$1.replace(/^[\s\S]/, s => s.toLowerCase())
+        elm.addEventListener(eventName, value);
+      }
+      if (name === 'className') {
+        elm.setAttribute('class', value)
+      }
+      elm.setAttribute(name, value);
+    }
+    for (let child of this.children) {
+      let range = document.createRange();
+      if (elm.children.length) {
+        range.setStartAfter(elm.lastChild);
+        range.setEndAfter(elm.lastChild);
+      } else {
+        range.setStart(elm, 0);
+        range.setEnd(elm, 0);
+      }
+
+      child.mountTo(range);
+    }
+    range.insertNode(elm);
   }
 }
 
 class TextWrapper {
   constructor(content) {
     this.root = document.createTextNode(content);
+    this.type = '#text';
+    this.children = [];
+    this.props = Object.create(null);
   }
-  
+
   mountTo(range) {
+    this.range = range;
     range.deleteContents();
     range.insertNode(this.root);
+  }
+
+  get vdom() {
+    return this;
   }
 }
 
@@ -64,49 +123,108 @@ export class Component {
     this.children.push(vchild);
   }
 
-  setState(state, fn) {
-    let statePromise = new Promise((resolve, reject) => {
-      let isChanged = false;
-      let merge = (prevState, nextState) => {
-        for (let p in nextState) {
-          if (typeof nextState[p] === 'object') {
-            if (typeof prevState[p] !== 'object') {
+  get vdom() {
+    return this.render().vdom;
+  }
+
+  get type() {
+    return this.constructor.name;
+  }
+
+  setState(state, fn = () => { }) {
+    let merge = (prevState, nextState) => {
+      for (let p in nextState) {
+        if (typeof nextState[p] === 'object' && nextState !== null) {
+          if (typeof prevState[p] !== 'object') {
+            if (nextState[p] instanceof Array) {
+              prevState[p] = [];
+            } else {
               prevState[p] = {};
             }
-            merge(prevState[p], nextState[p])
-          } else {
-            if (prevState[p] !== nextState[p]) {
-              prevState[p] = nextState[p];
-              isChanged = true;
-            }
           }
+          merge(prevState[p], nextState[p])
+        } else {
+          prevState[p] = nextState[p];
         }
       }
-      if (!this.state && state) {
-        this.state = {};
-      }
+    }
+    if (!this.state && state) {
+      this.state = {};
+    }
 
-      merge(this.state, state);
-      if (isChanged) {
-        this.update();
-      }
-      resolve();
-    }).then(() => fn());
+    merge(this.state, state);
+    this.update();
   }
 
   update() {
-    let placehoader = document.createComment("placehoader");
-    let range = document.createRange();
-    if (this.range.endContainer) {
-      range.setStart(this.range.endContainer, this.range.endOffset);
-      range.setEnd(this.range.endContainer, this.range.endOffset);
-      range.insertNode(placehoader)
+    let vdom = this.vdom;
+    if (this.oldVdom) {
+      let isSameNode = (node1, node2) => {
+        if (node1.type !== node2.type) {
+          return false;
+        }
+        for (let name of node1.props) {
+          if (typeof node1.props[name] === "function" &&
+            typeof node2.props[name] === "function" &&
+            node1.props[name].toString() === node2.props[name].toString()
+          ) continue;
+
+          if (typeof node1.props[name] === "object" &&
+            typeof node2.props[name] === "object" &&
+            JSON.stringify(node1.props[name]) === JSON.stringify(node2.props[name])
+          ) continue;
+
+          if (node1.props[name] !== node2.props[name]) {
+            return false;
+          }
+        }
+        if (node1.props.length !== node2.props.length) {
+          return false;
+        }
+
+        return true;
+      }
+
+      let isSameTree = (node1, node2) => {
+        if (!isSameNode(node1, node2)) {
+          return false;
+        }
+        if (node1.children.length !== node2.children.length) {
+          return false;
+        }
+        for (let i = 0; i < node1.children.length; i++) {
+          if (!isSameNode(node1.children[i], node2.children[i])) return false;
+        }
+
+        return true;
+      }
+
+      let replace = (newTree, oldTree, indent) => {
+        if (isSameTree(vdom, this.vdom)) {
+          console.log('all same');
+          return;
+        }
+
+        if (!isSameNode(newTree, oldTree)) {
+          newTree.mountTo(oldTree.range);
+        } else {
+          for (let i = 0; i < newTree.children.lenght; i++) {
+            replace(newTree.children[i], oldTree.children[i], " " + indent)
+          }
+        }
+      }
+
+      if (isSameTree(vdom, this.oldVdom)) {
+        return;
+      }
+
+      replace(vdom, this.oldVdom, "");
+
+    } else {
+      vdom.mountTo(this.range);
     }
 
-    this.range.deleteContents();
-    let vdom = this.render();
-    vdom.mountTo(this.range);
-    // placehoader.parentNode.removeChild(placehoader);
+    this.oldVdom = vdom;
   }
 }
 
@@ -114,7 +232,7 @@ export let ToyReact = {
   createElement(type, attributes, ...children) {
     let elm;
     if (typeof type === 'string') {
-      elm = new ElementWrapper(type);
+      elm = new ElementWrapper(type, attributes);
     } else {
       elm = new type;
     }
@@ -129,7 +247,11 @@ export let ToyReact = {
           insertChildren(child)
         }
         else {
-          // 无法识别的直接转为字符串, 如:对象
+
+          if (child === null || child === void 0) {
+            child = "";
+          }
+
           if (!(child instanceof ElementWrapper) &&
             !(child instanceof TextWrapper) &&
             !(child instanceof Component)) {
