@@ -64,7 +64,7 @@ class ElementWrapper {
       }
       element.setAttribute(name, value);
     }
-    
+
     for (let child of this.children) {
       const range = document.createRange();
       if (element.children.length) {
@@ -128,7 +128,7 @@ export class Component {
     return this.constructor.name;
   }
 
-  setState(state, fn = () => {}) {
+  setState(state, fn = () => { }) {
 
     if (JSON.stringify(this.state) === JSON.stringify(state)) {
       return;
@@ -189,7 +189,7 @@ export class Component {
         }
         return true;
       }
-      
+
       const isSameTree = (nextTreeNode, prevTreeNode) => {
 
         if (!isSameNode(nextTreeNode, prevTreeNode)) {
@@ -203,7 +203,7 @@ export class Component {
         for (let i = 0; i < nextTreeNode.children.length; i++) {
           if (!isSameTree(nextTreeNode.children[i], prevTreeNode.children[i])) return false;
         }
-        
+
         return true;
       }
 
@@ -213,10 +213,7 @@ export class Component {
         }
 
         if (!isSameNode(nextTreeNode, prevTreeNode)) {
-          if (typeof prevTreeNode === 'undefined' && typeof indent !== 'undefined') {
-          } else {
-            nextTreeNode.mountTo(prevTreeNode.range)
-          }
+          nextTreeNode.mountTo(prevTreeNode.range)
         } else {
           for (let i = 0; i < nextTreeNode.children.length; i++) {
             replace(nextTreeNode.children[i], prevTreeNode.children[i], " " + indent)
@@ -266,7 +263,7 @@ export let ToyReact = {
           if (typeof child === 'string') {
             child = new TextWrapper(child);
           }
-          
+
           elm.appendChild(child);
         }
       }
