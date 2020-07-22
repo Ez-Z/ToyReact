@@ -64,7 +64,7 @@ class ElementWrapper {
       }
       element.setAttribute(name, value);
     }
-
+    
     for (let child of this.children) {
       const range = document.createRange();
       if (element.children.length) {
@@ -82,8 +82,8 @@ class ElementWrapper {
 }
 
 class TextWrapper {
-  constructor(context) {
-    this.root = document.createTextNode(context);
+  constructor(type) {
+    this.root = document.createTextNode(type);
     this.type = '#text';
     this.children = [];
     this.props = Object.create(null);
@@ -125,87 +125,101 @@ export class Component {
   }
 
   get type() {
-    return this.constructor.type;
+    return this.constructor.name;
   }
 
-  setState(state) {
-    let merge = (oldState, newState) => {
-      for (const p in newState) {
-        if (typeof newState[p] === "object" && newState[p] !== null) {
-          if (typeof oldState[p] !== "object") {
-            if (newState[p] instanceof Array) {
-              oldState[p] = [];
-            } else {
-              oldState[p] = {};
-            }
-          }
-          merge(oldState[p], newState[p]);
-        } else {
-          oldState[p] = newState[p];
-        }
-      }
-    };
-    if (!this.state && state) {
-      this.state = {};
-    }
-    merge(this.state, state);
+  setState(state, fn = () => {}) {
 
+    if (JSON.stringify(this.state) === JSON.stringify(state)) {
+      return;
+    }
+
+    new Promise((resolve, reject) => {
+      let merge = (prevState, nextState) => {
+        for (const p in nextState) {
+          if (typeof nextState[p] === "object" && nextState[p] !== null) {
+            if (typeof prevState[p] !== "object") {
+              if (nextState[p] instanceof Array) {
+                prevState[p] = [];
+              } else {
+                prevState[p] = {};
+              }
+            }
+            merge(prevState[p], nextState[p]);
+          } else {
+            prevState[p] = nextState[p];
+          }
+        }
+      };
+      if (!this.state && state) {
+        this.state = {};
+      }
+      merge(this.state, state);
+
+      resolve();
+    }).then(() => fn())
     this.update();
   }
 
   update() {
-    let vdom = this.vdom;
+    const vdom = this.vdom;
+
     if (this.oldVdom) {
-      let isSameNode = (node1, node2) => {
-        if (node1.type !== node2.type) {
+      const isSameNode = (nextTreeNode, prevTreeNode) => {
+        if (!nextTreeNode || !prevTreeNode) {
           return false;
         }
-        
-        for (const name in node1.props) {
+        if (nextTreeNode.type !== prevTreeNode.type) {
+          return false;
+        }
+        for (let name in nextTreeNode.props) {
           if (
-            typeof node1.props[name] !== "object" &&
-            typeof node2.props[name] !== "object" &&
-            JSON.stringify(node1.props[name]) === JSON.stringify(node2.props[name])
+            typeof nextTreeNode.props[name] === 'object' &&
+            typeof prevTreeNode.props[name] === 'object' &&
+            JSON.stringify(prevTreeNode.props[name]) === JSON.stringify(nextTreeNode.props[name])
           ) {
             continue;
           }
-          if (node1.props[name] !== node2.props[name]) {
+          if (nextTreeNode.props[name] !== prevTreeNode.props[name]) {
             return false;
           }
         }
-        if (Object.keys(node1.props).length !== Object.keys(node2.props).length) {
+        if (Object.keys(nextTreeNode.props).length !== Object.keys(prevTreeNode.props).length) {
           return false;
         }
         return true;
-      };
+      }
+      
+      const isSameTree = (nextTreeNode, prevTreeNode) => {
 
-      let isSameTree = (node1, node2) => {
-        if (!isSameNode(node1, node2)) {
+        if (!isSameNode(nextTreeNode, prevTreeNode)) {
           return false;
         }
-        if (node1.children.length !== node2.children.length) {
+
+        if (nextTreeNode.children.length !== prevTreeNode.children.length) {
           return false;
         }
-        for (let i = 0; i < node1.children.length; i++) {
-          if (!isSameTree(node1.children[i], node2.children[i])) {
-            return false;
-          }
-        }
 
+        for (let i = 0; i < nextTreeNode.children.length; i++) {
+          if (!isSameTree(nextTreeNode.children[i], prevTreeNode.children[i])) return false;
+        }
+        
         return true;
       }
 
-      let replace = (newTree, oldTree, indent) => {
-        if (isSameTree(newTree, oldTree)) {
-          console.log('all same');
+      const replace = (nextTreeNode, prevTreeNode, indent) => {
+        if (isSameTree(nextTreeNode, prevTreeNode)) {
           return;
         }
-        // newTree.mountTo(oldTree.range);
-        if (!isSameNode(newTree, oldTree)) {
-          newTree.mountTo(oldTree.range);
+
+        if (!isSameNode(nextTreeNode, prevTreeNode)) {
+          if (typeof prevTreeNode === 'undefined' && typeof indent !== 'undefined') {
+          } else {
+            nextTreeNode.mountTo(prevTreeNode.range)
+          }
         } else {
-          for (let i = 0; i < newTree.children.lenght; i++) {
-            replace(newTree.children[i], oldTree.children[i], " " + indent)
+          for (let i = 0; i < nextTreeNode.children.length; i++) {
+            replace(nextTreeNode.children[i], prevTreeNode.children[i], " " + indent)
           }
         }
       }
@@ -252,7 +266,7 @@ export let ToyReact = {
           if (typeof child === 'string') {
             child = new TextWrapper(child);
           }
-
+          
           elm.appendChild(child);
         }
       }
